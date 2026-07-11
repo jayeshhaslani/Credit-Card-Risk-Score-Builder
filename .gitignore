@@ -1,0 +1,59 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment and secrets
+.env
+.env.*
+.streamlit/secrets.toml
+
+# Jupyter / notebook artifacts
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Raw datasets and archives
+Data/raw/
+data/raw/
+**/accepted_2007_to_2018Q4.csv
+**/rejected_2007_to_2018Q4.csv
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+
+# Large generated files in processed data
+# Keep the small demonstration tables and coefficient outputs, but avoid tracking
+# bulky derived CSVs that can be regenerated or are too large for the repo.
+Data/processed/lendingclub_sample.csv
+Data/processed/model_df_clean.csv
+Data/processed/model_macro_woe.csv
+Data/processed/model_woe.csv
+Data/processed/risk_macro_df.csv
+Data/processed/risk_model_base.csv
+Data/processed/scored_loans.csv
+Data/processed/macro_scored_loans.csv
+
