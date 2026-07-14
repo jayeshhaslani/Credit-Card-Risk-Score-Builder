@@ -9,7 +9,7 @@ def _load_artifacts():
     global _MODEL, _BINS
     if _MODEL is None or _BINS is None:
         import joblib
-        import scorecardpy as sc  # ensure available when loading
+        # scorecardpy is not required at runtime for inference; use saved bins directly
 
         # resolve models directory relative to project root
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -27,12 +27,19 @@ def score_applicant(input_df):
     """
     _load_artifacts()
 
-    import scorecardpy as sc
+    from src.predictor import _apply_woebin_ply
 
     # Remove target/label columns if present (model was trained without them)
     df_features = input_df.drop(columns=['target', 'loan_status'], errors='ignore')
 
-    input_woe = sc.woebin_ply(df_features, _BINS)
+    input_woe = _apply_woebin_ply(df_features, _BINS)
+
+    expected_model_columns = list(getattr(_MODEL, "feature_names_in_", []))
+    if not expected_model_columns:
+        # derive from bins ordering
+        expected_model_columns = [f"{feature}_woe" for feature in (_BINS.keys())]
+
+    input_woe = input_woe.reindex(columns=expected_model_columns, fill_value=0.0)
 
     pd_value = _MODEL.predict_proba(input_woe)[:, 1][0]
 

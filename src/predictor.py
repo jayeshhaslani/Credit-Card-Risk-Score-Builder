@@ -5,7 +5,7 @@ from typing import Any
 
 import joblib
 import pandas as pd
-import scorecardpy as sc
+import numpy as np
 
 from src.preprocessing import build_applicant_dataframe
 
@@ -40,6 +40,89 @@ def _load_artifacts() -> tuple[Any, Any, list[str]]:
     return model, bins, list(feature_names)
 
 
+def _apply_woebin_ply(applicant_df: pd.DataFrame, bins: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Lightweight replacement for scorecardpy.woebin_ply that applies saved WOE bins.
+
+    Produces columns named `<feature>_woe` for each feature present in `bins`.
+    """
+    result = pd.DataFrame(index=applicant_df.index)
+
+    for feature, bin_df in bins.items():
+        if feature not in applicant_df.columns:
+            continue
+
+        series = applicant_df[feature]
+
+        # Attempt to interpret breaks as numeric cut points
+        breaks = list(bin_df["breaks"].tolist())
+        numeric_breaks = []
+        is_numeric = True
+        for b in breaks:
+            try:
+                if str(b) == "inf":
+                    numeric_breaks.append(np.inf)
+                else:
+                    numeric_breaks.append(float(b))
+            except Exception:
+                is_numeric = False
+                break
+
+        woe_values = []
+        if is_numeric:
+            # edges: [-inf, b1, b2, ..., inf]
+            edges = np.array([-np.inf] + numeric_breaks, dtype=float)
+            uppers = edges[1:]
+
+            for v in series:
+                if pd.isna(v):
+                    woe_values.append(0.0)
+                    continue
+                try:
+                    fv = float(v)
+                except Exception:
+                    woe_values.append(0.0)
+                    continue
+                # searchsorted with side='right' matches binning semantics like [a,b)
+                idx = np.searchsorted(uppers, fv, side="right")
+                # guard index range
+                if idx < 0:
+                    idx = 0
+                if idx >= len(bin_df):
+                    idx = len(bin_df) - 1
+                woe_values.append(float(bin_df.iloc[int(idx)]["woe"]))
+        else:
+            # Categorical / string bins. `breaks` may contain comma-separated tokens
+            patterns = []
+            for _, row in bin_df.iterrows():
+                token = str(row["breaks"])
+                parts = [p for p in token.split(",") if p != ""]
+                patterns.append((parts, float(row["woe"])))
+
+            def match_cat(val):
+                if pd.isna(val):
+                    return 0.0
+                s = str(val)
+                for parts, w in patterns:
+                    for p in parts:
+                        if "%" in p:
+                            # treat % as wildcard (substring match)
+                            sub = p.replace("%", "")
+                            if sub == "":
+                                return w
+                            if sub in s:
+                                return w
+                        else:
+                            if s == p:
+                                return w
+                return 0.0
+
+            woe_values = [match_cat(v) for v in series]
+
+        result[f"{feature}_woe"] = pd.Series(woe_values, index=applicant_df.index, dtype=float)
+
+    return result
+
+
 def predict_applicant(raw_inputs: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the applicant frame, transform it with WOE bins, and return a prediction payload."""
 
@@ -53,7 +136,7 @@ def predict_applicant(raw_inputs: dict[str, Any] | None = None) -> dict[str, Any
     applicant_df = applicant_df.loc[:, feature_names]
 
     try:
-        woe_df = sc.woebin_ply(applicant_df, bins)
+        woe_df = _apply_woebin_ply(applicant_df, bins)
     except Exception as exc:  # pragma: no cover - defensive runtime path
         raise RuntimeError(f"WOE transformation failed for applicant input: {exc}") from exc
 
