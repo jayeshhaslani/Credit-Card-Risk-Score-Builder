@@ -40,10 +40,15 @@ def _load_artifacts() -> tuple[Any, Any, list[str]]:
     return model, bins, list(feature_names)
 
 
-def _apply_woebin_ply(applicant_df: pd.DataFrame, bins: dict[str, pd.DataFrame]) -> pd.DataFrame:
+def _apply_woebin_ply(
+    applicant_df: pd.DataFrame,
+    bins: dict[str, pd.DataFrame],
+    expected_columns: list[str] | None = None,
+) -> pd.DataFrame:
     """Lightweight replacement for scorecardpy.woebin_ply that applies saved WOE bins.
 
-    Produces columns named `<feature>_woe` for each feature present in `bins`.
+    Produces columns named `<feature>_woe` for each feature present in `bins` and
+    returns them in the same order as the trained model expects.
     """
     result = pd.DataFrame(index=applicant_df.index)
 
@@ -120,6 +125,9 @@ def _apply_woebin_ply(applicant_df: pd.DataFrame, bins: dict[str, pd.DataFrame])
 
         result[f"{feature}_woe"] = pd.Series(woe_values, index=applicant_df.index, dtype=float)
 
+    if expected_columns:
+        return result.reindex(columns=expected_columns, fill_value=0.0)
+
     return result
 
 
@@ -135,14 +143,14 @@ def predict_applicant(raw_inputs: dict[str, Any] | None = None) -> dict[str, Any
 
     applicant_df = applicant_df.loc[:, feature_names]
 
-    try:
-        woe_df = _apply_woebin_ply(applicant_df, bins)
-    except Exception as exc:  # pragma: no cover - defensive runtime path
-        raise RuntimeError(f"WOE transformation failed for applicant input: {exc}") from exc
-
     expected_model_columns = list(getattr(model, "feature_names_in_", []))
     if not expected_model_columns:
         expected_model_columns = [f"{feature}_woe" for feature in feature_names]
+
+    try:
+        woe_df = _apply_woebin_ply(applicant_df, bins, expected_columns=expected_model_columns)
+    except Exception as exc:  # pragma: no cover - defensive runtime path
+        raise RuntimeError(f"WOE transformation failed for applicant input: {exc}") from exc
 
     if not all(column in woe_df.columns for column in expected_model_columns):
         missing_woe_columns = [column for column in expected_model_columns if column not in woe_df.columns]
